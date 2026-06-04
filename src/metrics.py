@@ -40,6 +40,9 @@ def monthly_mrr(subscriptions: list[Subscription]) -> list[dict[str, object]]:
 
 
 def monthly_churned_customers(subscriptions: list[Subscription]) -> list[dict[str, object]]:
+    if not subscriptions:
+        return []
+
     churn_counts: dict[str, int] = defaultdict(int)
     by_customer: dict[str, list[Subscription]] = defaultdict(list)
     for subscription in subscriptions:
@@ -59,10 +62,17 @@ def monthly_churned_customers(subscriptions: list[Subscription]) -> list[dict[st
             if not has_timely_resubscription:
                 churn_counts[_month_key(subscription.end_date)] += 1
 
-    return [
-        {"month": month, "churned_customers": churn_counts[month]}
-        for month in sorted(churn_counts)
-    ]
+    first_month = _month_start(min(subscription.start_date for subscription in subscriptions))
+    last_month = _latest_relevant_month(subscriptions)
+    rows: list[dict[str, object]] = []
+
+    current = first_month
+    while current <= last_month:
+        month = _month_key(current)
+        rows.append({"month": month, "churned_customers": churn_counts[month]})
+        current = current + relativedelta(months=1)
+
+    return rows
 
 
 def signup_cohorts(

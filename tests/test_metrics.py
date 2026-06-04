@@ -22,7 +22,11 @@ def test_churn_resubscription_on_day_30_prevents_churn() -> None:
         Subscription("C001", date(2024, 3, 1), None, "basic", 30.0, 3),
     ]
 
-    assert monthly_churned_customers(subscriptions) == []
+    assert monthly_churned_customers(subscriptions) == [
+        {"month": "2024-01", "churned_customers": 0},
+        {"month": "2024-02", "churned_customers": 0},
+        {"month": "2024-03", "churned_customers": 0},
+    ]
 
 
 def test_churn_resubscription_after_day_30_counts_churn() -> None:
@@ -32,7 +36,9 @@ def test_churn_resubscription_after_day_30_counts_churn() -> None:
     ]
 
     assert monthly_churned_customers(subscriptions) == [
-        {"month": "2024-01", "churned_customers": 1}
+        {"month": "2024-01", "churned_customers": 1},
+        {"month": "2024-02", "churned_customers": 0},
+        {"month": "2024-03", "churned_customers": 0},
     ]
 
 
