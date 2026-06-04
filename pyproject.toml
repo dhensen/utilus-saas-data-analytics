@@ -1,0 +1,20 @@
+[project]
+name = "utilus-saas-data-analytics"
+version = "0.1.0"
+description = "CSV analytics CLI for SaaS subscription metrics"
+readme = "DESIGN.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pandas>=2.2.0",
+    "pandera>=0.20.0",
+    "python-dateutil>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
