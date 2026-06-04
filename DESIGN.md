@@ -1,45 +1,43 @@
 # Design
 
-The project is a small `uv`-managed Python CLI. `main.py` handles command-line arguments
-and JSON output, `src/loading.py` loads and validates CSV rows, `src/models.py` contains
-typed dataclasses, and `src/metrics.py` contains the business metric calculations.
+## How the code is structured
 
-CSV validation is split into two stages. First, Pandera strict schemas validate the file
-shape and coerce scalar values such as dates and prices. Rows that pass Pandera become
-valid candidates; rejected rows are retained internally for logging. Second,
-application-level checks reject rows that need cross-row context, such as duplicate
-customer IDs, subscriptions for unknown customers, and subscriptions whose exclusive
-`end_date` is not after `start_date`.
+The project is a small `uv`-managed Python CLI. `main.py` handles command-line arguments,
+orchestration, JSON output, and optional data-quality logging. `src/loading.py` reads CSV
+files, validates them with strict/coercing Pandera schemas, and applies cross-row cleanup.
+`src/models.py` contains typed dataclasses for customers, subscriptions, rejected rows, and
+adjusted rows. `src/metrics.py` contains the metric calculations and report assembly.
 
-Subscriptions are modeled as half-open intervals: `[start_date, end_date)`. Monthly MRR
-counts the full monthly price for any subscription overlapping a calendar month. Churn is
-counted when a subscription ends and the same customer has no new subscription starting
-within 30 days after the exclusive `end_date`, including the 30th day. Cohort retention
-groups customers by signup month and checks whether they have any subscription active
-exactly three calendar months after signup.
+## How the business rules are modeled
 
-Overlapping subscriptions for the same customer are normalized before metrics are
-calculated. If overlapping rows have the same monthly price, they are merged into one
-continuous interval. If the later row has a different price, it is treated as a price
-change and the earlier interval is shortened to end at the later row's `start_date`.
-Keeping `end_date` exclusive makes this adjustment a clean handoff with no double-counted
-day.
+Subscriptions are modeled as half-open intervals: `[start_date, end_date)`, so `end_date`
+is exclusive. Monthly MRR sums the full monthly price for every normalized subscription
+that overlaps a calendar month. Churn is counted when a subscription has an `end_date` and
+the customer has no later subscription starting within 30 days after that date, including
+the 30th day. Cohorts are grouped by signup month; 3-month retention checks whether the
+customer has any subscription active exactly three calendar months after signup.
 
-Adding another metric should only require a new function in `src/metrics.py` and adding
-its result to `build_report`. The loader returns clean typed records plus data-quality
-details, so metric functions do not need to know about CSV parsing or Pandera failure
-formats. The JSON report contains compact data-quality counts; detailed rejected-row
-records are logged to stderr or to `--log-file`.
+Overlapping subscriptions for the same customer are normalized before metrics run. Same
+price overlaps are merged into one continuous interval. If the later row has a different
+price, it is treated as a price change and the earlier interval is shortened to end at the
+later row's `start_date`.
 
-## Failure behavior
+## How another metric would be added
 
-Invalid row handling favors producing a partial report over failing the whole run. Bad row
-values, duplicate customer IDs, unknown subscription customer IDs, and invalid date ranges
-are rejected and logged; the report is still written from the remaining valid records.
-Subscription overlap fixes are logged as adjusted rows, not rejected rows.
+Add a new function to `src/metrics.py` that takes the already validated and normalized
+records, then add its result to `build_report`. For example, monthly ARPU could be added as
+monthly MRR divided by the number of active customers in that month. The loader and CLI
+would not need to change. If metrics grow, a future improvement would be to turn
+`metrics.py` into a `metrics/` package where each metric lives in its own submodule.
+
+## Assumptions and known trade-offs
+
+Invalid row handling favors a partial report over failing the whole run. Bad row values,
+duplicate customer IDs, unknown subscription customer IDs, and invalid date ranges are
+rejected and logged; overlap fixes are logged as adjusted rows. The JSON report contains
+only compact data-quality counts, while detailed records go to stderr or `--log-file`.
 
 The CLI exits nonzero only for file-level problems that prevent meaningful validation:
 missing files, unparseable CSV input, missing required columns, extra columns, or columns
 in the wrong order. Pandera can coerce values inside existing columns, but it cannot infer
-or create a missing column, so missing required columns are treated as a fatal file-shape
-error rather than a row-level rejection.
+or create missing columns, so missing required columns are fatal file-shape errors.
