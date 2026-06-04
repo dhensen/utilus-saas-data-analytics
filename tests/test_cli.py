@@ -22,7 +22,11 @@ def test_cli_writes_report(tmp_path) -> None:
     assert result.returncode == 0, result.stderr
     report = json.loads(output_json.read_text())
     assert report["monthly_mrr"] == [{"month": "2024-01", "mrr": 30.0}]
-    assert report["data_quality"] == {"rejected_rows": 0, "valid_candidate_rows": 2}
+    assert report["data_quality"] == {
+        "adjusted_rows": 0,
+        "rejected_rows": 0,
+        "valid_candidate_rows": 2,
+    }
 
 
 def test_cli_logs_rejected_rows_to_optional_log_file(tmp_path) -> None:
@@ -52,6 +56,10 @@ def test_cli_logs_rejected_rows_to_optional_log_file(tmp_path) -> None:
 
     assert result.returncode == 0, result.stderr
     report = json.loads(output_json.read_text())
-    assert report["data_quality"] == {"rejected_rows": 1, "valid_candidate_rows": 1}
+    assert report["data_quality"] == {
+        "adjusted_rows": 0,
+        "rejected_rows": 1,
+        "valid_candidate_rows": 1,
+    }
     assert "unknown customer_id" in log_file.read_text()
     assert "unknown customer_id" not in output_json.read_text()

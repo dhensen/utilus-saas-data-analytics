@@ -40,7 +40,7 @@ def main() -> int:
 
 
 def log_data_quality_issues(data: AnalyticsData, log_file: Path | None) -> None:
-    if not data.rejected_rows:
+    if not data.rejected_rows and not data.adjusted_rows:
         return
 
     logger = logging.getLogger("data_quality")
@@ -60,6 +60,9 @@ def log_data_quality_issues(data: AnalyticsData, log_file: Path | None) -> None:
 
     logger.info("Rejected rows: %s", len(data.rejected_rows))
     for row in data.rejected_rows:
+        logger.info(json.dumps(row.to_dict(), sort_keys=True))
+    logger.info("Adjusted rows: %s", len(data.adjusted_rows))
+    for row in data.adjusted_rows:
         logger.info(json.dumps(row.to_dict(), sort_keys=True))
 
 

@@ -8,7 +8,15 @@ import pandas as pd
 import pandera.pandas as pa
 from pandera.errors import SchemaErrors
 
-from src.models import AnalyticsData, Coercion, Customer, RejectedRow, Subscription, ValidCandidateRow
+from src.models import (
+    AdjustedRow,
+    AnalyticsData,
+    Coercion,
+    Customer,
+    RejectedRow,
+    Subscription,
+    ValidCandidateRow,
+)
 
 CUSTOMER_COLUMNS = ["customer_id", "signup_date", "country"]
 SUBSCRIPTION_COLUMNS = ["customer_id", "start_date", "end_date", "plan", "monthly_price"]
@@ -53,6 +61,7 @@ def load_analytics_data(customers_path: Path, subscriptions_path: Path) -> Analy
     subscriptions, subscription_business_rejects = _build_subscriptions(
         subscription_validated, {customer.customer_id for customer in customers}
     )
+    subscriptions, overlap_adjustments = _normalize_subscription_overlaps(subscriptions)
 
     rejected_row_keys = {
         ("customers", reject.row_number) for reject in (*customer_rejects, *customer_business_rejects)
@@ -76,6 +85,7 @@ def load_analytics_data(customers_path: Path, subscriptions_path: Path) -> Analy
             *customer_business_rejects,
             *subscription_business_rejects,
         ],
+        adjusted_rows=overlap_adjustments,
     )
 
 
@@ -357,6 +367,106 @@ def _build_subscriptions(
         )
 
     return subscriptions, rejects
+
+
+def _normalize_subscription_overlaps(
+    subscriptions: list[Subscription],
+) -> tuple[list[Subscription], list[AdjustedRow]]:
+    normalized: list[Subscription] = []
+    adjustments: list[AdjustedRow] = []
+
+    by_customer: dict[str, list[Subscription]] = {}
+    for subscription in subscriptions:
+        by_customer.setdefault(subscription.customer_id, []).append(subscription)
+
+    for customer_id in sorted(by_customer):
+        customer_subscriptions = sorted(
+            by_customer[customer_id], key=lambda item: (item.start_date, item.row_number)
+        )
+        customer_normalized: list[Subscription] = []
+
+        for subscription in customer_subscriptions:
+            current = subscription
+            while customer_normalized and _overlaps(customer_normalized[-1], current):
+                previous = customer_normalized[-1]
+                if previous.monthly_price == current.monthly_price:
+                    merged_end = _max_end(previous.end_date, current.end_date)
+                    customer_normalized[-1] = Subscription(
+                        customer_id=previous.customer_id,
+                        start_date=previous.start_date,
+                        end_date=merged_end,
+                        plan=previous.plan,
+                        monthly_price=previous.monthly_price,
+                        row_number=previous.row_number,
+                    )
+                    adjustments.append(
+                        AdjustedRow(
+                            source="subscriptions",
+                            row_number=current.row_number,
+                            record_id=current.customer_id,
+                            field="date_range",
+                            reason="overlapping subscription with same price merged",
+                            original_value=_interval_value(current),
+                            adjusted_value=_interval_value(customer_normalized[-1]),
+                        )
+                    )
+                    current = customer_normalized.pop()
+                else:
+                    adjusted_previous = Subscription(
+                        customer_id=previous.customer_id,
+                        start_date=previous.start_date,
+                        end_date=current.start_date,
+                        plan=previous.plan,
+                        monthly_price=previous.monthly_price,
+                        row_number=previous.row_number,
+                    )
+                    customer_normalized[-1] = adjusted_previous
+                    adjustments.append(
+                        AdjustedRow(
+                            source="subscriptions",
+                            row_number=previous.row_number,
+                            record_id=previous.customer_id,
+                            field="end_date",
+                            reason="overlapping subscription adjusted for later price change",
+                            original_value=_date_value(previous.end_date),
+                            adjusted_value=current.start_date.isoformat(),
+                        )
+                    )
+
+                    if adjusted_previous.end_date <= adjusted_previous.start_date:
+                        customer_normalized.pop()
+                    break
+
+            customer_normalized.append(current)
+
+        normalized.extend(customer_normalized)
+
+    normalized.sort(key=lambda item: (item.customer_id, item.start_date, item.row_number))
+    return normalized, adjustments
+
+
+def _overlaps(left: Subscription, right: Subscription) -> bool:
+    left_end = left.end_date or date.max
+    right_end = right.end_date or date.max
+    return left.start_date < right_end and right.start_date < left_end
+
+
+def _max_end(left: date | None, right: date | None) -> date | None:
+    if left is None or right is None:
+        return None
+    return max(left, right)
+
+
+def _interval_value(subscription: Subscription) -> dict[str, object]:
+    return {
+        "start_date": subscription.start_date.isoformat(),
+        "end_date": _date_value(subscription.end_date),
+        "monthly_price": subscription.monthly_price,
+    }
+
+
+def _date_value(value: date | None) -> str | None:
+    return value.isoformat() if value is not None else None
 
 
 def _row_number(index: object) -> int:
