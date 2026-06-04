@@ -32,6 +32,8 @@ would not need to change. If metrics grow, a future improvement would be to turn
 
 ## Assumptions and known trade-offs
 
+`end_date` is assumed to be exclusive.
+
 Invalid row handling favors a partial report over failing the whole run. Bad row values,
 duplicate customer IDs, unknown subscription customer IDs, and invalid date ranges are
 rejected and logged; overlap fixes are logged as adjusted rows. The JSON report contains
