@@ -81,8 +81,8 @@ class AnalyticsData:
     valid_candidate_rows: list[ValidCandidateRow] = field(default_factory=list)
     rejected_rows: list[RejectedRow] = field(default_factory=list)
 
-    def data_quality_dict(self) -> dict[str, object]:
+    def data_quality_summary_dict(self) -> dict[str, object]:
         return {
-            "valid_candidate_rows": [row.to_dict() for row in self.valid_candidate_rows],
-            "rejected_rows": [row.to_dict() for row in self.rejected_rows],
+            "valid_candidate_rows": len(self.valid_candidate_rows),
+            "rejected_rows": len(self.rejected_rows),
         }

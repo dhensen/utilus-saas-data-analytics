@@ -13,7 +13,7 @@ def build_report(data: AnalyticsData) -> dict[str, object]:
         "monthly_churned_customers": monthly_churned_customers(data.subscriptions),
         "monthly_mrr": monthly_mrr(data.subscriptions),
         "signup_cohorts": signup_cohorts(data.customers, data.subscriptions),
-        "data_quality": data.data_quality_dict(),
+        "data_quality": data.data_quality_summary_dict(),
     }
 
 
