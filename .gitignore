@@ -9,5 +9,6 @@ htmlcov/
 output.json
 data/*_big.csv
 *.log
+visualizations/
 
 .DS_Store
